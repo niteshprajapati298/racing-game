@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     await connectDB();
 
     // Find user
-    const user = await User.findOne({ email: validatedData.email.toLowerCase() });
+    const user = await User.findOne({ email: validatedData.email.toLowerCase().trim() });
     if (!user) {
       return NextResponse.json(
         { error: 'Invalid email or password' },
@@ -66,6 +66,8 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    console.error('Login error:', error);
+    
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: error.errors[0].message },
@@ -73,7 +75,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.error('Login error:', error);
+    if (error instanceof Error) {
+      return NextResponse.json(
+        { error: error.message || 'Login failed. Please try again.' },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
       { error: 'Login failed. Please try again.' },
       { status: 500 }

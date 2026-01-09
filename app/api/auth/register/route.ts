@@ -10,6 +10,7 @@ const registerSchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters'),
   dob: z.string().refine(
     (val) => {
+      if (!val) return false;
       const date = new Date(val);
       const today = new Date();
       const age = today.getFullYear() - date.getFullYear();
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest) {
     await connectDB();
 
     // Check if user already exists
-    const existingUser = await User.findOne({ email: validatedData.email.toLowerCase() });
+    const existingUser = await User.findOne({ email: validatedData.email.toLowerCase().trim() });
     if (existingUser) {
       return NextResponse.json(
         { error: 'User already exists with this email' },
@@ -79,6 +80,8 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
+    console.error('Registration error:', error);
+    
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: error.errors[0].message },
@@ -86,7 +89,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.error('Registration error:', error);
+    if (error instanceof Error) {
+      return NextResponse.json(
+        { error: error.message || 'Registration failed. Please try again.' },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
       { error: 'Registration failed. Please try again.' },
       { status: 500 }

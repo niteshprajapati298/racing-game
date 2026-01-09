@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
 
     await connectDB();
 
-    const user = await User.findOne({ email: validatedData.email.toLowerCase() })
+    const user = await User.findOne({ email: validatedData.email.toLowerCase().trim() })
       .select('verificationQuestion');
     
     if (!user) {
@@ -25,9 +25,11 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({
-      question: user.verificationQuestion,
+      question: user.verificationQuestion || '',
     });
   } catch (error) {
+    console.error('Get question error:', error);
+    
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: error.errors[0].message },
@@ -35,11 +37,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.error('Get question error:', error);
     return NextResponse.json(
       { error: 'Failed to fetch question' },
       { status: 500 }
     );
   }
 }
-

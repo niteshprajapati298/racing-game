@@ -26,6 +26,7 @@ const registerSchema = z.object({
   confirmPassword: z.string(),
   dob: z.string().refine(
     (val) => {
+      if (!val) return false;
       const date = new Date(val);
       const today = new Date();
       const age = today.getFullYear() - date.getFullYear();
@@ -48,10 +49,6 @@ const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().min(1, 'Password is required'),
   verificationAnswer: z.string().min(1, 'Verification answer is required'),
-  name: z.string().optional(),
-  confirmPassword: z.string().optional(),
-  dob: z.string().optional(),
-  verificationQuestion: z.string().optional(),
 });
 
 type RegisterFormData = z.infer<typeof registerSchema>;
@@ -90,20 +87,23 @@ export default function AuthForm() {
     return `rgb(${Math.round((r + m) * 255)}, ${Math.round((g + m) * 255)}, ${Math.round((b + m) * 255)})`;
   };
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-    reset,
-    watch,
-  } = useForm<RegisterFormData | LoginFormData>({
-    resolver: zodResolver(isLogin ? loginSchema : registerSchema),
+  // Separate form instances for login and register
+  const registerForm = useForm<RegisterFormData>({
+    resolver: zodResolver(registerSchema),
+    mode: 'onChange',
   });
 
-  const emailValue = watch('email');
+  const loginForm = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+    mode: 'onChange',
+  });
+
+  const emailValue = isLogin 
+    ? (loginForm.watch('email') as string | undefined)
+    : (registerForm.watch('email') as string | undefined);
 
   useEffect(() => {
-    if (isLogin && emailValue) {
+    if (isLogin && emailValue && emailValue.includes('@')) {
       const fetchQuestion = async () => {
         try {
           const response = await fetch('/api/auth/get-question', {
@@ -113,13 +113,14 @@ export default function AuthForm() {
           });
           if (response.ok) {
             const data = await response.json();
-            setUserQuestion(data.question);
+            setUserQuestion(data.question || '');
             setEmailEntered(true);
           } else {
             setUserQuestion('');
             setEmailEntered(false);
           }
-        } catch {
+        } catch (err) {
+          console.error('Error fetching question:', err);
           setUserQuestion('');
           setEmailEntered(false);
         }
@@ -133,19 +134,20 @@ export default function AuthForm() {
     }
   }, [emailValue, isLogin]);
 
-  const onSubmit = async (data: any) => {
+  const onSubmit = async (data: RegisterFormData | LoginFormData) => {
     setIsLoading(true);
     setError('');
 
     try {
       if (isLogin) {
+        const loginData = data as LoginFormData;
         const response = await fetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            email: data.email,
-            password: data.password,
-            verificationAnswer: data.verificationAnswer,
+            email: loginData.email,
+            password: loginData.password,
+            verificationAnswer: loginData.verificationAnswer,
           }),
         });
 
@@ -155,20 +157,25 @@ export default function AuthForm() {
           throw new Error(result.error || 'Login failed');
         }
 
-        localStorage.setItem('token', result.token);
-        localStorage.setItem('user', JSON.stringify(result.user));
-        router.push('/play');
+        if (result.token && result.user) {
+          localStorage.setItem('token', result.token);
+          localStorage.setItem('user', JSON.stringify(result.user));
+          router.push('/play');
+        } else {
+          throw new Error('Invalid response from server');
+        }
       } else {
+        const registerData = data as RegisterFormData;
         const response = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            name: data.name,
-            email: data.email,
-            password: data.password,
-            dob: data.dob,
-            verificationQuestion: data.verificationQuestion,
-            verificationAnswer: data.verificationAnswer,
+            name: registerData.name,
+            email: registerData.email,
+            password: registerData.password,
+            dob: registerData.dob,
+            verificationQuestion: registerData.verificationQuestion,
+            verificationAnswer: registerData.verificationAnswer,
           }),
         });
 
@@ -178,12 +185,17 @@ export default function AuthForm() {
           throw new Error(result.error || 'Registration failed');
         }
 
-        localStorage.setItem('token', result.token);
-        localStorage.setItem('user', JSON.stringify(result.user));
-        router.push('/play');
+        if (result.token && result.user) {
+          localStorage.setItem('token', result.token);
+          localStorage.setItem('user', JSON.stringify(result.user));
+          router.push('/play');
+        } else {
+          throw new Error('Invalid response from server');
+        }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      console.error('Auth error:', err);
+      setError(err instanceof Error ? err.message : 'An error occurred. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -192,7 +204,8 @@ export default function AuthForm() {
   const toggleMode = () => {
     setIsLogin(!isLogin);
     setError('');
-    reset();
+    registerForm.reset();
+    loginForm.reset();
     setUserQuestion('');
     setEmailEntered(false);
   };
@@ -243,7 +256,7 @@ export default function AuthForm() {
           </motion.div>
         )}
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+        <form onSubmit={isLogin ? loginForm.handleSubmit(onSubmit) : registerForm.handleSubmit(onSubmit)} className="space-y-5">
           <AnimatePresence mode="wait">
             {!isLogin && (
               <motion.div
@@ -257,8 +270,8 @@ export default function AuthForm() {
                   label="Full Name"
                   type="text"
                   placeholder="Enter your full name"
-                  {...register('name')}
-                  error={errors.name?.message}
+                  {...registerForm.register('name')}
+                  error={registerForm.formState.errors.name?.message}
                 />
               </motion.div>
             )}
@@ -268,8 +281,8 @@ export default function AuthForm() {
             label="Email Address"
             type="email"
             placeholder="your@email.com"
-            {...register('email')}
-            error={errors.email?.message}
+            {...(isLogin ? loginForm.register('email') : registerForm.register('email'))}
+            error={isLogin ? loginForm.formState.errors.email?.message : registerForm.formState.errors.email?.message}
           />
 
           <AnimatePresence mode="wait">
@@ -284,8 +297,8 @@ export default function AuthForm() {
                 <Input
                   label="Date of Birth"
                   type="date"
-                  {...register('dob')}
-                  error={errors.dob?.message}
+                  {...registerForm.register('dob')}
+                  error={registerForm.formState.errors.dob?.message}
                 />
               </motion.div>
             )}
@@ -321,14 +334,14 @@ export default function AuthForm() {
                 Verification Question
               </label>
               <select
-                {...register('verificationQuestion')}
+                {...registerForm.register('verificationQuestion')}
                 className={`
                   w-full px-4 py-3 rounded-lg
                   glass border border-cyan-500/30
                   bg-black/30 text-white
                   focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/50
                   transition-all duration-300
-                  ${errors.verificationQuestion ? 'border-red-500' : ''}
+                  ${registerForm.formState.errors.verificationQuestion ? 'border-red-500' : ''}
                 `}
               >
                 <option value="">Select a question</option>
@@ -338,10 +351,10 @@ export default function AuthForm() {
                   </option>
                 ))}
               </select>
-              {errors.verificationQuestion && (
+              {registerForm.formState.errors.verificationQuestion && (
                 <p className="mt-1 text-sm text-red-400 flex items-center gap-1">
                   <span>⚠️</span>
-                  <span>{errors.verificationQuestion.message}</span>
+                  <span>{registerForm.formState.errors.verificationQuestion.message}</span>
                 </p>
               )}
             </div>
@@ -351,16 +364,16 @@ export default function AuthForm() {
             label="Verification Answer"
             type="text"
             placeholder="Your answer"
-            {...register('verificationAnswer')}
-            error={errors.verificationAnswer?.message}
+            {...(isLogin ? loginForm.register('verificationAnswer') : registerForm.register('verificationAnswer'))}
+            error={isLogin ? loginForm.formState.errors.verificationAnswer?.message : registerForm.formState.errors.verificationAnswer?.message}
           />
 
           <Input
             label="Password"
             type="password"
             placeholder="••••••••"
-            {...register('password')}
-            error={errors.password?.message}
+            {...(isLogin ? loginForm.register('password') : registerForm.register('password'))}
+            error={isLogin ? loginForm.formState.errors.password?.message : registerForm.formState.errors.password?.message}
           />
 
           <AnimatePresence mode="wait">
@@ -376,8 +389,8 @@ export default function AuthForm() {
                   label="Confirm Password"
                   type="password"
                   placeholder="••••••••"
-                  {...register('confirmPassword')}
-                  error={errors.confirmPassword?.message}
+                  {...registerForm.register('confirmPassword')}
+                  error={registerForm.formState.errors.confirmPassword?.message}
                 />
               </motion.div>
             )}
