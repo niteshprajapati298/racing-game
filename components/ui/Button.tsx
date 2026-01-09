@@ -20,11 +20,11 @@ export default function Button({
   
   const variantClasses = {
     primary:
-      'bg-gradient-to-r from-cyan-500 to-blue-500 text-white glow-border hover:from-cyan-400 hover:to-blue-400',
+      'bg-gradient-to-r from-cyan-500 to-blue-500 text-white glow-border hover:from-cyan-400 hover:to-blue-400 shadow-lg shadow-cyan-500/30',
     secondary:
-      'glass border border-cyan-500/50 text-cyan-400 hover:border-cyan-400 hover:text-cyan-300',
+      'glass border border-cyan-500/50 text-cyan-400 hover:border-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10',
     danger:
-      'bg-gradient-to-r from-red-500 to-pink-500 text-white hover:from-red-400 hover:to-pink-400',
+      'bg-gradient-to-r from-red-500 to-pink-500 text-white hover:from-red-400 hover:to-pink-400 shadow-lg shadow-red-500/30',
   };
 
   return (
@@ -37,7 +37,13 @@ export default function Button({
     >
       {isLoading ? (
         <span className="flex items-center justify-center">
-          <span className="animate-spin mr-2">⏳</span>
+          <motion.span
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+            className="mr-2"
+          >
+            ⏳
+          </motion.span>
           Loading...
         </span>
       ) : (
@@ -46,4 +52,3 @@ export default function Button({
     </motion.button>
   );
 }
-

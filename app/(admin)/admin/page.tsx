@@ -194,6 +194,7 @@ export default function AdminPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-cyan-500/30">
+                      <th className="text-left py-3 px-4 text-cyan-400 font-semibold">Name</th>
                       <th className="text-left py-3 px-4 text-cyan-400 font-semibold">Email</th>
                       <th className="text-left py-3 px-4 text-cyan-400 font-semibold">Best Score</th>
                       <th className="text-left py-3 px-4 text-cyan-400 font-semibold">Total Scores</th>
@@ -211,6 +212,7 @@ export default function AdminPage() {
                         transition={{ delay: index * 0.05 }}
                         className="border-b border-cyan-500/10 hover:bg-cyan-500/5 transition-colors"
                       >
+                        <td className="py-3 px-4 text-cyan-300 font-medium">{user.name || 'N/A'}</td>
                         <td className="py-3 px-4 text-white">{user.email}</td>
                         <td className="py-3 px-4 text-cyan-300 font-semibold">
                           {user.bestScore.toLocaleString()}

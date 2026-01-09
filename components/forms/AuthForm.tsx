@@ -19,7 +19,7 @@ const verificationQuestions = [
   'What is the name of your best friend?',
 ];
 
-const authSchema = z.object({
+const registerSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters').max(50, 'Name must be less than 50 characters'),
   email: z.string().email('Invalid email address'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
@@ -44,12 +44,25 @@ const authSchema = z.object({
   path: ['confirmPassword'],
 });
 
-type AuthFormData = z.infer<typeof authSchema>;
+const loginSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(1, 'Password is required'),
+  verificationAnswer: z.string().min(1, 'Verification answer is required'),
+  name: z.string().optional(),
+  confirmPassword: z.string().optional(),
+  dob: z.string().optional(),
+  verificationQuestion: z.string().optional(),
+});
+
+type RegisterFormData = z.infer<typeof registerSchema>;
+type LoginFormData = z.infer<typeof loginSchema>;
 
 export default function AuthForm() {
   const [error, setError] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [isLogin, setIsLogin] = useState(false);
+  const [userQuestion, setUserQuestion] = useState<string>('');
+  const [emailEntered, setEmailEntered] = useState(false);
   const router = useRouter();
 
   const {
@@ -57,11 +70,11 @@ export default function AuthForm() {
     handleSubmit,
     formState: { errors },
     reset,
-  } = useForm<AuthFormData>({
-    resolver: zodResolver(authSchema),
+  } = useForm<RegisterFormData | LoginFormData>({
+    resolver: zodResolver(isLogin ? loginSchema : registerSchema),
   });
 
-  const onSubmit = async (data: AuthFormData) => {
+  const onSubmit = async (data: any) => {
     setIsLoading(true);
     setError('');
 
@@ -140,6 +153,18 @@ export default function AuthForm() {
               textShadow: '0 0 30px #00ffff, 0 0 60px #00ffff',
               color: '#00ffff'
             }}
+            animate={{
+              textShadow: [
+                '0 0 30px #00ffff, 0 0 60px #00ffff',
+                '0 0 40px #00ffff, 0 0 80px #00ffff',
+                '0 0 30px #00ffff, 0 0 60px #00ffff',
+              ],
+            }}
+            transition={{
+              duration: 2,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
           >
             {isLogin ? 'Welcome Back' : 'Join the Race'}
           </motion.h2>
@@ -152,78 +177,135 @@ export default function AuthForm() {
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-6 p-4 rounded-lg bg-red-500/20 border border-red-500/50 text-red-400 text-sm"
+            className="mb-6 p-4 rounded-lg bg-red-500/20 border border-red-500/50 text-red-400 text-sm flex items-center gap-2"
           >
-            {error}
+            <span>⚠️</span>
+            <span>{error}</span>
           </motion.div>
         )}
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-          {!isLogin && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-            >
-              <Input
-                label="Full Name"
-                type="text"
-                placeholder="Enter your full name"
-                {...register('name')}
-                error={errors.name?.message}
-              />
-            </motion.div>
-          )}
+          <AnimatePresence mode="wait">
+            {!isLogin && (
+              <motion.div
+                key="name"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <Input
+                  label="Full Name"
+                  type="text"
+                  placeholder="Enter your full name"
+                  {...register('name')}
+                  error={errors.name?.message}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <Input
             label="Email Address"
             type="email"
             placeholder="your@email.com"
-            {...register('email')}
+            {...register('email', {
+              onChange: async (e) => {
+                if (isLogin && e.target.value) {
+                  setEmailEntered(true);
+                  try {
+                    const response = await fetch('/api/auth/get-question', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ email: e.target.value }),
+                    });
+                    if (response.ok) {
+                      const data = await response.json();
+                      setUserQuestion(data.question);
+                    } else {
+                      setUserQuestion('');
+                    }
+                  } catch {
+                    setUserQuestion('');
+                  }
+                } else {
+                  setUserQuestion('');
+                  setEmailEntered(false);
+                }
+              },
+            })}
             error={errors.email?.message}
           />
 
-          {!isLogin && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-            >
-              <Input
-                label="Date of Birth"
-                type="date"
-                {...register('dob')}
-                error={errors.dob?.message}
-              />
-            </motion.div>
-          )}
+          <AnimatePresence mode="wait">
+            {!isLogin && (
+              <motion.div
+                key="dob"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <Input
+                  label="Date of Birth"
+                  type="date"
+                  {...register('dob')}
+                  error={errors.dob?.message}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          <div>
-            <label className="block text-sm font-medium text-cyan-400 mb-2">
-              Verification Question
-            </label>
-            <select
-              {...register('verificationQuestion')}
-              className={`
+          {isLogin ? (
+            <div>
+              <label className="block text-sm font-medium text-cyan-400 mb-2">
+                Verification Question
+              </label>
+              <div className={`
                 w-full px-4 py-3 rounded-lg
                 glass border border-cyan-500/30
-                bg-black/20 text-white
-                focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/50
-                transition-all duration-300
-                ${errors.verificationQuestion ? 'border-red-500' : ''}
-              `}
-            >
-              <option value="">Select a question</option>
-              {verificationQuestions.map((q, idx) => (
-                <option key={idx} value={q}>
-                  {q}
-                </option>
-              ))}
-            </select>
-            {errors.verificationQuestion && (
-              <p className="mt-1 text-sm text-red-400">{errors.verificationQuestion.message}</p>
-            )}
-          </div>
+                bg-black/30 text-white
+                min-h-[48px] flex items-center
+                ${!emailEntered ? 'text-gray-500' : 'text-cyan-300'}
+              `}>
+                {emailEntered ? (
+                  userQuestion || 'Enter your email to see your question'
+                ) : (
+                  'Enter your email to see your verification question'
+                )}
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-cyan-400 mb-2">
+                Verification Question
+              </label>
+              <select
+                {...register('verificationQuestion')}
+                className={`
+                  w-full px-4 py-3 rounded-lg
+                  glass border border-cyan-500/30
+                  bg-black/30 text-white
+                  focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/50
+                  transition-all duration-300
+                  ${errors.verificationQuestion ? 'border-red-500' : ''}
+                `}
+              >
+                <option value="">Select a question</option>
+                {verificationQuestions.map((q, idx) => (
+                  <option key={idx} value={q}>
+                    {q}
+                  </option>
+                ))}
+              </select>
+              {errors.verificationQuestion && (
+                <p className="mt-1 text-sm text-red-400 flex items-center gap-1">
+                  <span>⚠️</span>
+                  <span>{errors.verificationQuestion.message}</span>
+                </p>
+              )}
+            </div>
+          )}
 
           <Input
             label="Verification Answer"
@@ -241,24 +323,28 @@ export default function AuthForm() {
             error={errors.password?.message}
           />
 
-          {!isLogin && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-            >
-              <Input
-                label="Confirm Password"
-                type="password"
-                placeholder="••••••••"
-                {...register('confirmPassword')}
-                error={errors.confirmPassword?.message}
-              />
-            </motion.div>
-          )}
+          <AnimatePresence mode="wait">
+            {!isLogin && (
+              <motion.div
+                key="confirmPassword"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <Input
+                  label="Confirm Password"
+                  type="password"
+                  placeholder="••••••••"
+                  {...register('confirmPassword')}
+                  error={errors.confirmPassword?.message}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <Button type="submit" isLoading={isLoading} className="w-full text-lg py-4">
-            {isLogin ? 'Login' : 'Create Account'}
+            {isLogin ? '🚀 Login' : '🏁 Create Account'}
           </Button>
         </form>
 
@@ -266,15 +352,15 @@ export default function AuthForm() {
           <button
             type="button"
             onClick={toggleMode}
-            className="text-sm text-gray-400 hover:text-cyan-400 transition-colors"
+            className="text-sm text-gray-400 hover:text-cyan-400 transition-colors duration-200"
           >
             {isLogin ? (
               <>
-                Don't have an account? <span className="text-cyan-400 font-semibold">Register</span>
+                Don't have an account? <span className="text-cyan-400 font-semibold underline">Register</span>
               </>
             ) : (
               <>
-                Already have an account? <span className="text-cyan-400 font-semibold">Login</span>
+                Already have an account? <span className="text-cyan-400 font-semibold underline">Login</span>
               </>
             )}
           </button>
@@ -283,4 +369,3 @@ export default function AuthForm() {
     </motion.div>
   );
 }
-
