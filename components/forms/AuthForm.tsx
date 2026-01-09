@@ -28,6 +28,7 @@ const registerSchema = z.object({
     (val) => {
       if (!val) return false;
       const date = new Date(val);
+      if (isNaN(date.getTime())) return false;
       const today = new Date();
       const age = today.getFullYear() - date.getFullYear();
       const monthDiff = today.getMonth() - date.getMonth();
@@ -141,6 +142,12 @@ export default function AuthForm() {
     try {
       if (isLogin) {
         const loginData = data as LoginFormData;
+        console.log('Submitting login:', { email: loginData.email, hasPassword: !!loginData.password, hasAnswer: !!loginData.verificationAnswer });
+        
+        if (!loginData.email || !loginData.password || !loginData.verificationAnswer) {
+          throw new Error('Please fill in all fields');
+        }
+        
         const response = await fetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -151,10 +158,18 @@ export default function AuthForm() {
           }),
         });
 
-        const result = await response.json();
+        let result;
+        try {
+          result = await response.json();
+        } catch (parseError) {
+          console.error('Failed to parse response:', parseError);
+          throw new Error('Server returned invalid response. Please check your connection.');
+        }
+
+        console.log('Login response:', { ok: response.ok, status: response.status, hasToken: !!result.token, error: result.error });
 
         if (!response.ok) {
-          throw new Error(result.error || 'Login failed');
+          throw new Error(result.error || `Login failed (${response.status})`);
         }
 
         if (result.token && result.user) {
@@ -162,10 +177,23 @@ export default function AuthForm() {
           localStorage.setItem('user', JSON.stringify(result.user));
           router.push('/play');
         } else {
-          throw new Error('Invalid response from server');
+          throw new Error('Invalid response from server - missing token or user data');
         }
       } else {
         const registerData = data as RegisterFormData;
+        console.log('Submitting registration:', { 
+          email: registerData.email, 
+          hasName: !!registerData.name,
+          hasDob: !!registerData.dob,
+          hasQuestion: !!registerData.verificationQuestion,
+          hasAnswer: !!registerData.verificationAnswer,
+          hasPassword: !!registerData.password
+        });
+        
+        if (!registerData.name || !registerData.email || !registerData.password || !registerData.dob || !registerData.verificationQuestion || !registerData.verificationAnswer) {
+          throw new Error('Please fill in all required fields');
+        }
+        
         const response = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -179,10 +207,18 @@ export default function AuthForm() {
           }),
         });
 
-        const result = await response.json();
+        let result;
+        try {
+          result = await response.json();
+        } catch (parseError) {
+          console.error('Failed to parse response:', parseError);
+          throw new Error('Server returned invalid response. Please check your connection.');
+        }
+
+        console.log('Registration response:', { ok: response.ok, status: response.status, hasToken: !!result.token, error: result.error });
 
         if (!response.ok) {
-          throw new Error(result.error || 'Registration failed');
+          throw new Error(result.error || `Registration failed (${response.status})`);
         }
 
         if (result.token && result.user) {
@@ -190,12 +226,13 @@ export default function AuthForm() {
           localStorage.setItem('user', JSON.stringify(result.user));
           router.push('/play');
         } else {
-          throw new Error('Invalid response from server');
+          throw new Error('Invalid response from server - missing token or user data');
         }
       }
     } catch (err) {
       console.error('Auth error:', err);
-      setError(err instanceof Error ? err.message : 'An error occurred. Please try again.');
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred. Please try again.';
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }

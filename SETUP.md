@@ -7,7 +7,9 @@ npm install
 
 ## Step 2: Set Up Environment Variables
 
-Create a `.env.local` file in the root directory with the following:
+**IMPORTANT**: Create a `.env.local` file in the root directory. This file is required for the application to work!
+
+Create `.env.local` with the following content:
 
 ```env
 # MongoDB Connection
@@ -15,16 +17,14 @@ MONGODB_URI=mongodb://localhost:27017/racing-game
 # Or for MongoDB Atlas:
 # MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/racing-game
 
-# NextAuth (for future use)
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=your-secret-key-change-this-in-production
-
-# JWT Secret (generate a random string)
+# JWT Secret (generate a random string - REQUIRED)
 JWT_SECRET=your-jwt-secret-key-change-this-in-production
 
 # Admin Email (set this to your email to access admin panel)
 ADMIN_EMAIL=admin@racinggame.com
 ```
+
+**Note**: If you don't create this file, you'll get errors when trying to register or login!
 
 **Important**: 
 - Replace `your-secret-key-change-this-in-production` with a secure random string

@@ -4,6 +4,9 @@ import User from '@/models/User';
 import { hashPassword, generateToken } from '@/lib/auth';
 import { z } from 'zod';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 const registerSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters').max(50, 'Name must be less than 50 characters'),
   email: z.string().email('Invalid email address'),
@@ -12,6 +15,7 @@ const registerSchema = z.object({
     (val) => {
       if (!val) return false;
       const date = new Date(val);
+      if (isNaN(date.getTime())) return false;
       const today = new Date();
       const age = today.getFullYear() - date.getFullYear();
       const monthDiff = today.getMonth() - date.getMonth();
@@ -22,18 +26,40 @@ const registerSchema = z.object({
     },
     { message: 'You must be at least 18 years old' }
   ),
-  verificationQuestion: z.string().min(1, 'Verification question is required'),
+  verificationQuestion: z.string().min(1, 'Please select a verification question'),
   verificationAnswer: z.string().min(2, 'Verification answer must be at least 2 characters'),
 });
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch (parseError) {
+      console.error('JSON parse error:', parseError);
+      return NextResponse.json(
+        { error: 'Invalid JSON in request body' },
+        { status: 400 }
+      );
+    }
+    
+    console.log('Registration request received:', { email: body.email, hasName: !!body.name });
     
     // Validate input
     const validatedData = registerSchema.parse(body);
+    console.log('Validation passed');
 
-    await connectDB();
+    // Connect to database
+    try {
+      await connectDB();
+      console.log('Database connected');
+    } catch (dbError) {
+      console.error('Database connection error:', dbError);
+      return NextResponse.json(
+        { error: 'Database connection failed. Please check your MongoDB configuration.' },
+        { status: 500 }
+      );
+    }
 
     // Check if user already exists
     const existingUser = await User.findOne({ email: validatedData.email.toLowerCase().trim() });
@@ -60,6 +86,8 @@ export async function POST(request: NextRequest) {
       rewardEligible: false,
     });
 
+    console.log('User created successfully:', user.email);
+
     // Generate token
     const token = generateToken({
       userId: user._id.toString(),
@@ -83,13 +111,22 @@ export async function POST(request: NextRequest) {
     console.error('Registration error:', error);
     
     if (error instanceof z.ZodError) {
+      const errorMessage = error.errors[0]?.message || 'Validation failed';
+      console.error('Validation errors:', error.errors);
       return NextResponse.json(
-        { error: error.errors[0].message },
+        { error: errorMessage },
         { status: 400 }
       );
     }
 
     if (error instanceof Error) {
+      // Check for MongoDB duplicate key error
+      if (error.message.includes('E11000') || error.message.includes('duplicate key')) {
+        return NextResponse.json(
+          { error: 'User already exists with this email' },
+          { status: 400 }
+        );
+      }
       return NextResponse.json(
         { error: error.message || 'Registration failed. Please try again.' },
         { status: 500 }

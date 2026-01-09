@@ -3,13 +3,26 @@ import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import { z } from 'zod';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 const emailSchema = z.object({
   email: z.string().email('Invalid email address'),
 });
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch (parseError) {
+      console.error('JSON parse error:', parseError);
+      return NextResponse.json(
+        { error: 'Invalid JSON in request body' },
+        { status: 400 }
+      );
+    }
+    
     const validatedData = emailSchema.parse(body);
 
     await connectDB();

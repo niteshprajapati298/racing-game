@@ -4,6 +4,9 @@ import User from '@/models/User';
 import { verifyPassword, generateToken } from '@/lib/auth';
 import { z } from 'zod';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().min(1, 'Password is required'),
@@ -12,25 +15,51 @@ const loginSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch (parseError) {
+      console.error('JSON parse error:', parseError);
+      return NextResponse.json(
+        { error: 'Invalid JSON in request body' },
+        { status: 400 }
+      );
+    }
+    
+    console.log('Login request received:', { email: body.email });
     
     // Validate input
     const validatedData = loginSchema.parse(body);
+    console.log('Validation passed');
 
-    await connectDB();
+    // Connect to database
+    try {
+      await connectDB();
+      console.log('Database connected');
+    } catch (dbError) {
+      console.error('Database connection error:', dbError);
+      return NextResponse.json(
+        { error: 'Database connection failed. Please check your MongoDB configuration.' },
+        { status: 500 }
+      );
+    }
 
     // Find user
     const user = await User.findOne({ email: validatedData.email.toLowerCase().trim() });
     if (!user) {
+      console.log('User not found:', validatedData.email);
       return NextResponse.json(
         { error: 'Invalid email or password' },
         { status: 401 }
       );
     }
 
+    console.log('User found:', user.email);
+
     // Verify password
     const isValidPassword = await verifyPassword(validatedData.password, user.password);
     if (!isValidPassword) {
+      console.log('Invalid password');
       return NextResponse.json(
         { error: 'Invalid email or password' },
         { status: 401 }
@@ -43,11 +72,14 @@ export async function POST(request: NextRequest) {
       user.verificationAnswer
     );
     if (!isValidVerification) {
+      console.log('Invalid verification answer');
       return NextResponse.json(
         { error: 'Incorrect verification answer' },
         { status: 401 }
       );
     }
+
+    console.log('Login successful');
 
     // Generate token
     const token = generateToken({
@@ -69,8 +101,10 @@ export async function POST(request: NextRequest) {
     console.error('Login error:', error);
     
     if (error instanceof z.ZodError) {
+      const errorMessage = error.errors[0]?.message || 'Validation failed';
+      console.error('Validation errors:', error.errors);
       return NextResponse.json(
-        { error: error.errors[0].message },
+        { error: errorMessage },
         { status: 400 }
       );
     }
