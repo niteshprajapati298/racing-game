@@ -22,9 +22,22 @@ interface Obstacle {
 const GameCanvas = memo(({ onGameOver, onMoveLeft, onMoveRight }: GameCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationFrameRef = useRef<number | null>(null);
-  const gameStateRef = useRef({
+  const gameStateRef = useRef<{
+    car: { x: number; y: number; width: number; height: number };
+    obstacles: Obstacle[];
+    roadOffset: number;
+    score: number;
+    distance: number;
+    time: number;
+    speed: number;
+    lastTime: number;
+    keys: { left: boolean; right: boolean };
+    roadX: number;
+    isRunning: boolean;
+    colorCycle: number;
+  }>({
     car: { x: 0, y: 0, width: GAME_CONFIG.CAR_WIDTH, height: GAME_CONFIG.CAR_HEIGHT },
-    obstacles: [] as Obstacle[],
+    obstacles: [],
     roadOffset: 0,
     score: 0,
     distance: 0,
@@ -263,7 +276,7 @@ const GameCanvas = memo(({ onGameOver, onMoveLeft, onMoveRight }: GameCanvasProp
       ctx.shadowBlur = 0;
     };
 
-    const drawCar = (x: number, y: number, isPlayer: boolean) => {
+    const drawCar = (x: number, y: number, isPlayer: boolean, colorHue?: number) => {
       ctx.save();
       
       if (isPlayer) {
@@ -302,7 +315,7 @@ const GameCanvas = memo(({ onGameOver, onMoveLeft, onMoveRight }: GameCanvasProp
         ctx.fillRect(x + GAME_CONFIG.CAR_WIDTH - 18, y + GAME_CONFIG.CAR_HEIGHT - 8, 10, 5);
       } else {
         // Enemy car with different RGB colors
-        const obstacleHue = (obs.colorHue + state.colorCycle) % 360;
+        const obstacleHue = colorHue !== undefined ? (colorHue + state.colorCycle) % 360 : (state.colorCycle + 60) % 360;
         const gradient = ctx.createLinearGradient(x, y, x, y + GAME_CONFIG.CAR_HEIGHT);
         gradient.addColorStop(0, hslToRgb(obstacleHue, 1, 0.7));
         gradient.addColorStop(0.3, hslToRgb((obstacleHue + 30) % 360, 1, 0.6));
@@ -448,7 +461,7 @@ const GameCanvas = memo(({ onGameOver, onMoveLeft, onMoveRight }: GameCanvasProp
       
       // Draw obstacles
       state.obstacles.forEach(obs => {
-        drawCar(obs.x, obs.y, false);
+        drawCar(obs.x, obs.y, false, obs.colorHue);
       });
 
       // Draw player car
@@ -475,7 +488,7 @@ const GameCanvas = memo(({ onGameOver, onMoveLeft, onMoveRight }: GameCanvasProp
       // Draw static frame when paused
       if (isPlaying && isPaused) {
         drawRoad();
-        state.obstacles.forEach(obs => drawCar(obs.x, obs.y, false));
+        state.obstacles.forEach(obs => drawCar(obs.x, obs.y, false, obs.colorHue));
         drawCar(state.car.x, state.car.y, true);
       }
     }

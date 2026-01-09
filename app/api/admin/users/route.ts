@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
 
     // Get score statistics for each user
     const usersWithStats = await Promise.all(
-      users.map(async (user) => {
+      (users as any[]).map(async (user: any) => {
         const scoreCount = await Score.countDocuments({ userId: user._id });
         const totalScore = await Score.aggregate([
           { $match: { userId: user._id } },
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
 
         return {
           ...user,
-          id: user._id.toString(),
+          id: user._id?.toString() || '',
           _id: undefined,
           scoreCount,
           totalScore: totalScore[0]?.total || 0,

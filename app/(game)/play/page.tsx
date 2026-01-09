@@ -264,7 +264,7 @@ export default function PlayPage() {
                   style={{ boxShadow: '0 0 30px rgba(255, 0, 255, 0.5)' }}
                 >
                   <p className="text-purple-200 font-bold text-xl text-center">
-                    🎉 Amazing! You're eligible for rewards! 🎉
+                    🎉 Amazing! You&apos;re eligible for rewards! 🎉
                   </p>
                 </motion.div>
               )}

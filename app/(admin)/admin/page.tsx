@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Card from '@/components/ui/Card';
@@ -36,6 +36,41 @@ export default function AdminPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [error, setError] = useState<string>('');
+
+  const fetchData = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      // Fetch stats
+      const statsResponse = await fetch('/api/admin/stats', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (statsResponse.ok) {
+        const statsData = await statsResponse.json();
+        setStats(statsData.stats);
+      }
+
+      // Fetch users
+      const usersResponse = await fetch(`/api/admin/users?page=${page}&limit=20&sortBy=bestScore&order=desc`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (usersResponse.ok) {
+        const usersData = await usersResponse.json();
+        setUsers(usersData.users);
+        setTotalPages(usersData.pagination.totalPages);
+      }
+    } catch (err) {
+      console.error('Failed to fetch data:', err);
+      setError('Failed to load data');
+    }
+  }, [page]);
 
   useEffect(() => {
     const checkAdmin = async () => {
@@ -75,48 +110,13 @@ export default function AdminPage() {
     };
 
     checkAdmin();
-  }, [router]);
-
-  const fetchData = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
-      // Fetch stats
-      const statsResponse = await fetch('/api/admin/stats', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (statsResponse.ok) {
-        const statsData = await statsResponse.json();
-        setStats(statsData.stats);
-      }
-
-      // Fetch users
-      const usersResponse = await fetch(`/api/admin/users?page=${page}&limit=20&sortBy=bestScore&order=desc`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (usersResponse.ok) {
-        const usersData = await usersResponse.json();
-        setUsers(usersData.users);
-        setTotalPages(usersData.pagination.totalPages);
-      }
-    } catch (err) {
-      console.error('Failed to fetch data:', err);
-      setError('Failed to load data');
-    }
-  };
+  }, [router, fetchData]);
 
   useEffect(() => {
     if (isAuthenticated) {
       fetchData();
     }
-  }, [page, isAuthenticated]);
+  }, [page, isAuthenticated, fetchData]);
 
   if (isLoading) {
     return (

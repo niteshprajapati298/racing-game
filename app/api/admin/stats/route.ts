@@ -36,12 +36,12 @@ export async function GET(request: NextRequest) {
       { $group: { _id: null, avg: { $avg: '$bestScore' } } },
     ]);
 
-    const topScore = await User.findOne().sort({ bestScore: -1 }).select('bestScore email').lean();
+    const topScore = await User.findOne().sort({ bestScore: -1 }).select('bestScore email name').lean() as { bestScore?: number; email?: string; name?: string } | null;
 
     const recentScores = await Score.find()
       .sort({ createdAt: -1 })
       .limit(10)
-      .populate('userId', 'email')
+      .populate('userId', 'email name')
       .lean();
 
     return NextResponse.json({
@@ -50,15 +50,15 @@ export async function GET(request: NextRequest) {
         totalScores,
         rewardEligibleUsers,
         averageBestScore: Math.round(avgBestScore[0]?.avg || 0),
-        topScore: topScore?.bestScore || 0,
-        topScoreUser: topScore?.email || 'N/A',
+        topScore: (topScore?.bestScore as number) || 0,
+        topScoreUser: (topScore?.email as string) || 'N/A',
       },
-      recentScores: recentScores.map((score) => ({
-        id: score._id.toString(),
+      recentScores: (recentScores as any[]).map((score: any) => ({
+        id: score._id?.toString() || '',
         userId: score.userId,
-        score: score.score,
-        distance: score.distance,
-        time: score.time,
+        score: score.score || 0,
+        distance: score.distance || 0,
+        time: score.time || 0,
         createdAt: score.createdAt,
       })),
     });

@@ -396,7 +396,7 @@ export default function AuthForm() {
           >
             {isLogin ? (
               <>
-                Don't have an account? <span className="text-cyan-400 font-semibold underline">Register</span>
+                Don&apos;t have an account? <span className="text-cyan-400 font-semibold underline">Register</span>
               </>
             ) : (
               <>
