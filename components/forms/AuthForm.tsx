@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -63,16 +63,75 @@ export default function AuthForm() {
   const [isLogin, setIsLogin] = useState(false);
   const [userQuestion, setUserQuestion] = useState<string>('');
   const [emailEntered, setEmailEntered] = useState(false);
+  const [colorHue, setColorHue] = useState(0);
   const router = useRouter();
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setColorHue((prev) => (prev + 1) % 360);
+    }, 50);
+    return () => clearInterval(interval);
+  }, []);
+
+  const hslToRgb = (h: number, s: number, l: number): string => {
+    h = h % 360;
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+    const m = l - c / 2;
+    let r = 0, g = 0, b = 0;
+
+    if (h < 60) { r = c; g = x; b = 0; }
+    else if (h < 120) { r = x; g = c; b = 0; }
+    else if (h < 180) { r = 0; g = c; b = x; }
+    else if (h < 240) { r = 0; g = x; b = c; }
+    else if (h < 300) { r = x; g = 0; b = c; }
+    else { r = c; g = 0; b = x; }
+
+    return `rgb(${Math.round((r + m) * 255)}, ${Math.round((g + m) * 255)}, ${Math.round((b + m) * 255)})`;
+  };
 
   const {
     register,
     handleSubmit,
     formState: { errors },
     reset,
+    watch,
   } = useForm<RegisterFormData | LoginFormData>({
     resolver: zodResolver(isLogin ? loginSchema : registerSchema),
   });
+
+  const emailValue = watch('email');
+
+  useEffect(() => {
+    if (isLogin && emailValue) {
+      const fetchQuestion = async () => {
+        try {
+          const response = await fetch('/api/auth/get-question', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: emailValue }),
+          });
+          if (response.ok) {
+            const data = await response.json();
+            setUserQuestion(data.question);
+            setEmailEntered(true);
+          } else {
+            setUserQuestion('');
+            setEmailEntered(false);
+          }
+        } catch {
+          setUserQuestion('');
+          setEmailEntered(false);
+        }
+      };
+
+      const timeoutId = setTimeout(fetchQuestion, 500);
+      return () => clearTimeout(timeoutId);
+    } else {
+      setUserQuestion('');
+      setEmailEntered(false);
+    }
+  }, [emailValue, isLogin]);
 
   const onSubmit = async (data: any) => {
     setIsLoading(true);
@@ -80,7 +139,6 @@ export default function AuthForm() {
 
     try {
       if (isLogin) {
-        // Login flow
         const response = await fetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -101,7 +159,6 @@ export default function AuthForm() {
         localStorage.setItem('user', JSON.stringify(result.user));
         router.push('/play');
       } else {
-        // Registration flow
         const response = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -136,6 +193,8 @@ export default function AuthForm() {
     setIsLogin(!isLogin);
     setError('');
     reset();
+    setUserQuestion('');
+    setEmailEntered(false);
   };
 
   return (
@@ -150,14 +209,14 @@ export default function AuthForm() {
           <motion.h2
             className="text-4xl md:text-5xl font-bold mb-2"
             style={{
-              textShadow: '0 0 30px #00ffff, 0 0 60px #00ffff',
-              color: '#00ffff'
+              color: hslToRgb(colorHue, 1, 0.8),
+              textShadow: `0 0 20px ${hslToRgb(colorHue, 1, 0.5)}, 0 0 40px ${hslToRgb((colorHue + 60) % 360, 1, 0.5)}`,
             }}
             animate={{
               textShadow: [
-                '0 0 30px #00ffff, 0 0 60px #00ffff',
-                '0 0 40px #00ffff, 0 0 80px #00ffff',
-                '0 0 30px #00ffff, 0 0 60px #00ffff',
+                `0 0 20px ${hslToRgb(colorHue, 1, 0.5)}, 0 0 40px ${hslToRgb((colorHue + 60) % 360, 1, 0.5)}`,
+                `0 0 30px ${hslToRgb((colorHue + 30) % 360, 1, 0.6)}, 0 0 50px ${hslToRgb((colorHue + 90) % 360, 1, 0.6)}`,
+                `0 0 20px ${hslToRgb(colorHue, 1, 0.5)}, 0 0 40px ${hslToRgb((colorHue + 60) % 360, 1, 0.5)}`,
               ],
             }}
             transition={{
@@ -209,31 +268,7 @@ export default function AuthForm() {
             label="Email Address"
             type="email"
             placeholder="your@email.com"
-            {...register('email', {
-              onChange: async (e) => {
-                if (isLogin && e.target.value) {
-                  setEmailEntered(true);
-                  try {
-                    const response = await fetch('/api/auth/get-question', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ email: e.target.value }),
-                    });
-                    if (response.ok) {
-                      const data = await response.json();
-                      setUserQuestion(data.question);
-                    } else {
-                      setUserQuestion('');
-                    }
-                  } catch {
-                    setUserQuestion('');
-                  }
-                } else {
-                  setUserQuestion('');
-                  setEmailEntered(false);
-                }
-              },
-            })}
+            {...register('email')}
             error={errors.email?.message}
           />
 
@@ -266,8 +301,13 @@ export default function AuthForm() {
                 glass border border-cyan-500/30
                 bg-black/30 text-white
                 min-h-[48px] flex items-center
-                ${!emailEntered ? 'text-gray-500' : 'text-cyan-300'}
-              `}>
+                ${!emailEntered ? 'text-gray-500' : ''}
+              `}
+              style={{
+                borderColor: emailEntered ? hslToRgb((colorHue + 120) % 360, 1, 0.5) : undefined,
+                color: emailEntered ? hslToRgb((colorHue + 120) % 360, 1, 0.8) : undefined,
+              }}
+              >
                 {emailEntered ? (
                   userQuestion || 'Enter your email to see your question'
                 ) : (

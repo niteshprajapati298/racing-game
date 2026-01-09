@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, memo, useCallback } from 'react';
+import { useEffect, useRef, memo } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { GAME_CONFIG } from '@/lib/constants';
 
@@ -16,6 +16,7 @@ interface Obstacle {
   width: number;
   height: number;
   lane: number;
+  colorHue: number;
 }
 
 const GameCanvas = memo(({ onGameOver, onMoveLeft, onMoveRight }: GameCanvasProps) => {
@@ -33,6 +34,7 @@ const GameCanvas = memo(({ onGameOver, onMoveLeft, onMoveRight }: GameCanvasProp
     keys: { left: false, right: false },
     roadX: 0,
     isRunning: false,
+    colorCycle: 0,
   });
 
   const { isPlaying, isPaused, gameOver, setScore, setDistance, setSpeed, setTime } = useGameStore();
@@ -179,47 +181,81 @@ const GameCanvas = memo(({ onGameOver, onMoveLeft, onMoveRight }: GameCanvasProp
       state.speed = GAME_CONFIG.BASE_SPEED;
       state.lastTime = performance.now();
       state.roadOffset = 0;
+      state.colorCycle = 0;
       state.car.x = canvas.width / 2 - GAME_CONFIG.CAR_WIDTH / 2;
       state.car.y = canvas.height - GAME_CONFIG.CAR_HEIGHT - 50;
     }
 
+    // Helper function to get RGB color from hue
+    const hslToRgb = (h: number, s: number, l: number): string => {
+      h = h % 360;
+      const c = (1 - Math.abs(2 * l - 1)) * s;
+      const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+      const m = l - c / 2;
+      let r = 0, g = 0, b = 0;
+
+      if (h < 60) { r = c; g = x; b = 0; }
+      else if (h < 120) { r = x; g = c; b = 0; }
+      else if (h < 180) { r = 0; g = c; b = x; }
+      else if (h < 240) { r = 0; g = x; b = c; }
+      else if (h < 300) { r = x; g = 0; b = c; }
+      else { r = c; g = 0; b = x; }
+
+      return `rgb(${Math.round((r + m) * 255)}, ${Math.round((g + m) * 255)}, ${Math.round((b + m) * 255)})`;
+    };
+
     const drawRoad = () => {
-      // Background
-      ctx.fillStyle = '#0a0a1a';
+      // Animated gradient background with RGB colors
+      const bgGradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+      const hue1 = (state.colorCycle) % 360;
+      const hue2 = (state.colorCycle + 60) % 360;
+      const hue3 = (state.colorCycle + 120) % 360;
+      
+      bgGradient.addColorStop(0, hslToRgb(hue1, 0.8, 0.05));
+      bgGradient.addColorStop(0.5, hslToRgb(hue2, 0.8, 0.08));
+      bgGradient.addColorStop(1, hslToRgb(hue3, 0.8, 0.05));
+      ctx.fillStyle = bgGradient;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Road
+      // Road with colorful gradient
       const roadGradient = ctx.createLinearGradient(state.roadX, 0, state.roadX + GAME_CONFIG.ROAD_WIDTH, 0);
-      roadGradient.addColorStop(0, '#1a1a2e');
-      roadGradient.addColorStop(0.5, '#252545');
-      roadGradient.addColorStop(1, '#1a1a2e');
+      roadGradient.addColorStop(0, hslToRgb((state.colorCycle + 180) % 360, 0.6, 0.15));
+      roadGradient.addColorStop(0.5, hslToRgb((state.colorCycle + 240) % 360, 0.7, 0.25));
+      roadGradient.addColorStop(1, hslToRgb((state.colorCycle + 180) % 360, 0.6, 0.15));
       ctx.fillStyle = roadGradient;
       ctx.fillRect(state.roadX, 0, GAME_CONFIG.ROAD_WIDTH, canvas.height);
 
-      // Lane lines
-      ctx.strokeStyle = '#00ffff';
-      ctx.lineWidth = 3;
-      ctx.setLineDash([40, 30]);
-      ctx.lineDashOffset = -state.roadOffset;
-
+      // Colorful lane lines with RGB cycling
       const laneWidth = GAME_CONFIG.ROAD_WIDTH / GAME_CONFIG.LANE_COUNT;
       for (let i = 1; i < GAME_CONFIG.LANE_COUNT; i++) {
+        const lineHue = (state.colorCycle + i * 60) % 360;
+        ctx.strokeStyle = hslToRgb(lineHue, 1, 0.5);
+        ctx.lineWidth = 4;
+        ctx.setLineDash([40, 30]);
+        ctx.lineDashOffset = -state.roadOffset;
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = hslToRgb(lineHue, 1, 0.5);
+        
         ctx.beginPath();
         ctx.moveTo(state.roadX + i * laneWidth, 0);
         ctx.lineTo(state.roadX + i * laneWidth, canvas.height);
         ctx.stroke();
       }
       ctx.setLineDash([]);
+      ctx.shadowBlur = 0;
 
-      // Road borders with glow
-      ctx.strokeStyle = '#00ffff';
-      ctx.lineWidth = 5;
-      ctx.shadowBlur = 15;
-      ctx.shadowColor = '#00ffff';
+      // Colorful road borders with RGB glow
+      const borderHue = (state.colorCycle + 90) % 360;
+      ctx.strokeStyle = hslToRgb(borderHue, 1, 0.6);
+      ctx.lineWidth = 6;
+      ctx.shadowBlur = 25;
+      ctx.shadowColor = hslToRgb(borderHue, 1, 0.6);
+      
       ctx.beginPath();
       ctx.moveTo(state.roadX, 0);
       ctx.lineTo(state.roadX, canvas.height);
       ctx.stroke();
+      
       ctx.beginPath();
       ctx.moveTo(state.roadX + GAME_CONFIG.ROAD_WIDTH, 0);
       ctx.lineTo(state.roadX + GAME_CONFIG.ROAD_WIDTH, canvas.height);
@@ -231,51 +267,74 @@ const GameCanvas = memo(({ onGameOver, onMoveLeft, onMoveRight }: GameCanvasProp
       ctx.save();
       
       if (isPlayer) {
+        // Player car with RGB gradient
+        const carHue = (state.colorCycle + 180) % 360;
+        const gradient = ctx.createLinearGradient(x, y, x, y + GAME_CONFIG.CAR_HEIGHT);
+        gradient.addColorStop(0, hslToRgb(carHue, 1, 0.7));
+        gradient.addColorStop(0.3, hslToRgb((carHue + 30) % 360, 1, 0.6));
+        gradient.addColorStop(0.7, hslToRgb((carHue + 60) % 360, 1, 0.5));
+        gradient.addColorStop(1, hslToRgb((carHue + 90) % 360, 1, 0.4));
+
+        ctx.shadowBlur = 30;
+        ctx.shadowColor = hslToRgb(carHue, 1, 0.6);
+        ctx.fillStyle = gradient;
+        ctx.fillRect(x + 5, y + 15, GAME_CONFIG.CAR_WIDTH - 10, GAME_CONFIG.CAR_HEIGHT - 20);
+
+        // Hood
+        ctx.fillStyle = hslToRgb((carHue + 15) % 360, 1, 0.65);
+        ctx.fillRect(x + 10, y + 5, GAME_CONFIG.CAR_WIDTH - 20, 25);
+
+        // Windshield with RGB tint
+        ctx.fillStyle = hslToRgb((carHue + 45) % 360, 0.8, 0.3);
+        ctx.fillRect(x + 12, y + 25, GAME_CONFIG.CAR_WIDTH - 24, 20);
+
+        // Headlights with RGB glow
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = hslToRgb(carHue, 1, 0.7);
+        ctx.fillStyle = hslToRgb(carHue, 1, 0.8);
+        ctx.fillRect(x + 8, y + 3, 8, 5);
+        ctx.fillRect(x + GAME_CONFIG.CAR_WIDTH - 16, y + 3, 8, 5);
+
+        // Tail lights
+        ctx.fillStyle = hslToRgb(0, 1, 0.6);
+        ctx.shadowColor = hslToRgb(0, 1, 0.8);
+        ctx.fillRect(x + 8, y + GAME_CONFIG.CAR_HEIGHT - 8, 10, 5);
+        ctx.fillRect(x + GAME_CONFIG.CAR_WIDTH - 18, y + GAME_CONFIG.CAR_HEIGHT - 8, 10, 5);
+      } else {
+        // Enemy car with different RGB colors
+        const obstacleHue = (obs.colorHue + state.colorCycle) % 360;
+        const gradient = ctx.createLinearGradient(x, y, x, y + GAME_CONFIG.CAR_HEIGHT);
+        gradient.addColorStop(0, hslToRgb(obstacleHue, 1, 0.7));
+        gradient.addColorStop(0.3, hslToRgb((obstacleHue + 30) % 360, 1, 0.6));
+        gradient.addColorStop(0.7, hslToRgb((obstacleHue + 60) % 360, 1, 0.5));
+        gradient.addColorStop(1, hslToRgb((obstacleHue + 90) % 360, 1, 0.4));
+
         ctx.shadowBlur = 25;
-        ctx.shadowColor = '#00ffff';
-      } else {
-        ctx.shadowBlur = 20;
-        ctx.shadowColor = '#ff00ff';
+        ctx.shadowColor = hslToRgb(obstacleHue, 1, 0.6);
+        ctx.fillStyle = gradient;
+        ctx.fillRect(x + 5, y + 15, GAME_CONFIG.CAR_WIDTH - 10, GAME_CONFIG.CAR_HEIGHT - 20);
+
+        // Hood
+        ctx.fillStyle = hslToRgb((obstacleHue + 15) % 360, 1, 0.65);
+        ctx.fillRect(x + 10, y + 5, GAME_CONFIG.CAR_WIDTH - 20, 25);
+
+        // Windshield
+        ctx.fillStyle = hslToRgb((obstacleHue + 45) % 360, 0.8, 0.3);
+        ctx.fillRect(x + 12, y + 25, GAME_CONFIG.CAR_WIDTH - 24, 20);
+
+        // Headlights
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = hslToRgb(obstacleHue, 1, 0.7);
+        ctx.fillStyle = hslToRgb(obstacleHue, 1, 0.8);
+        ctx.fillRect(x + 8, y + 3, 8, 5);
+        ctx.fillRect(x + GAME_CONFIG.CAR_WIDTH - 16, y + 3, 8, 5);
+
+        // Tail lights
+        ctx.fillStyle = hslToRgb(0, 1, 0.6);
+        ctx.shadowColor = hslToRgb(0, 1, 0.8);
+        ctx.fillRect(x + 8, y + GAME_CONFIG.CAR_HEIGHT - 8, 10, 5);
+        ctx.fillRect(x + GAME_CONFIG.CAR_WIDTH - 18, y + GAME_CONFIG.CAR_HEIGHT - 8, 10, 5);
       }
-
-      // Car body gradient
-      const gradient = ctx.createLinearGradient(x, y, x, y + GAME_CONFIG.CAR_HEIGHT);
-      if (isPlayer) {
-        gradient.addColorStop(0, '#00e5ff');
-        gradient.addColorStop(0.3, '#0088ff');
-        gradient.addColorStop(0.7, '#0066cc');
-        gradient.addColorStop(1, '#004499');
-      } else {
-        gradient.addColorStop(0, '#ff00ff');
-        gradient.addColorStop(0.3, '#cc00cc');
-        gradient.addColorStop(0.7, '#990099');
-        gradient.addColorStop(1, '#660066');
-      }
-
-      // Main body (using fillRect with rounded corners manually)
-      ctx.fillStyle = gradient;
-      ctx.fillRect(x + 5, y + 15, GAME_CONFIG.CAR_WIDTH - 10, GAME_CONFIG.CAR_HEIGHT - 20);
-
-      // Hood
-      ctx.fillStyle = isPlayer ? '#00aaff' : '#dd00dd';
-      ctx.fillRect(x + 10, y + 5, GAME_CONFIG.CAR_WIDTH - 20, 25);
-
-      // Windshield
-      ctx.fillStyle = 'rgba(0, 200, 255, 0.3)';
-      ctx.fillRect(x + 12, y + 25, GAME_CONFIG.CAR_WIDTH - 24, 20);
-
-      // Headlights
-      ctx.shadowBlur = 10;
-      ctx.shadowColor = isPlayer ? '#00ffff' : '#ff00ff';
-      ctx.fillStyle = isPlayer ? '#00ffff' : '#ff00ff';
-      ctx.fillRect(x + 8, y + 3, 8, 5);
-      ctx.fillRect(x + GAME_CONFIG.CAR_WIDTH - 16, y + 3, 8, 5);
-
-      // Tail lights
-      ctx.fillStyle = '#ff3333';
-      ctx.shadowColor = '#ff0000';
-      ctx.fillRect(x + 8, y + GAME_CONFIG.CAR_HEIGHT - 8, 10, 5);
-      ctx.fillRect(x + GAME_CONFIG.CAR_WIDTH - 18, y + GAME_CONFIG.CAR_HEIGHT - 8, 10, 5);
 
       ctx.restore();
     };
@@ -285,7 +344,6 @@ const GameCanvas = memo(({ onGameOver, onMoveLeft, onMoveRight }: GameCanvasProp
       const laneWidth = GAME_CONFIG.ROAD_WIDTH / GAME_CONFIG.LANE_COUNT;
       const x = state.roadX + lane * laneWidth + (laneWidth - GAME_CONFIG.OBSTACLE_WIDTH) / 2;
       
-      // Check if there's already an obstacle too close
       const tooClose = state.obstacles.some(
         obs => obs.lane === lane && obs.y < 200
       );
@@ -297,6 +355,7 @@ const GameCanvas = memo(({ onGameOver, onMoveLeft, onMoveRight }: GameCanvasProp
           width: GAME_CONFIG.OBSTACLE_WIDTH,
           height: GAME_CONFIG.OBSTACLE_HEIGHT,
           lane,
+          colorHue: Math.random() * 360, // Random hue for each obstacle
         });
       }
     };
@@ -335,6 +394,9 @@ const GameCanvas = memo(({ onGameOver, onMoveLeft, onMoveRight }: GameCanvasProp
 
       const deltaTime = Math.min((currentTime - state.lastTime) / 1000, 0.1);
       state.lastTime = currentTime;
+
+      // Update color cycle for RGB animation
+      state.colorCycle = (state.colorCycle + deltaTime * 30) % 360;
 
       // Update car position
       const moveSpeed = 400 * deltaTime;
