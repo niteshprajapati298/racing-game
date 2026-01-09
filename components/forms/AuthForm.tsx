@@ -1,0 +1,286 @@
+'use client';
+
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { useRouter } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
+import Input from '@/components/ui/Input';
+import Button from '@/components/ui/Button';
+import Card from '@/components/ui/Card';
+
+const verificationQuestions = [
+  'What is your favorite color?',
+  'What city were you born in?',
+  'What is your mother\'s maiden name?',
+  'What was the name of your first pet?',
+  'What is your favorite food?',
+  'What is the name of your best friend?',
+];
+
+const authSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters').max(50, 'Name must be less than 50 characters'),
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+  confirmPassword: z.string(),
+  dob: z.string().refine(
+    (val) => {
+      const date = new Date(val);
+      const today = new Date();
+      const age = today.getFullYear() - date.getFullYear();
+      const monthDiff = today.getMonth() - date.getMonth();
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < date.getDate())) {
+        return age - 1 >= 18;
+      }
+      return age >= 18;
+    },
+    { message: 'You must be at least 18 years old' }
+  ),
+  verificationQuestion: z.string().min(1, 'Please select a verification question'),
+  verificationAnswer: z.string().min(2, 'Verification answer must be at least 2 characters'),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ['confirmPassword'],
+});
+
+type AuthFormData = z.infer<typeof authSchema>;
+
+export default function AuthForm() {
+  const [error, setError] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLogin, setIsLogin] = useState(false);
+  const router = useRouter();
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    reset,
+  } = useForm<AuthFormData>({
+    resolver: zodResolver(authSchema),
+  });
+
+  const onSubmit = async (data: AuthFormData) => {
+    setIsLoading(true);
+    setError('');
+
+    try {
+      if (isLogin) {
+        // Login flow
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: data.email,
+            password: data.password,
+            verificationAnswer: data.verificationAnswer,
+          }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || 'Login failed');
+        }
+
+        localStorage.setItem('token', result.token);
+        localStorage.setItem('user', JSON.stringify(result.user));
+        router.push('/play');
+      } else {
+        // Registration flow
+        const response = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: data.name,
+            email: data.email,
+            password: data.password,
+            dob: data.dob,
+            verificationQuestion: data.verificationQuestion,
+            verificationAnswer: data.verificationAnswer,
+          }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || 'Registration failed');
+        }
+
+        localStorage.setItem('token', result.token);
+        localStorage.setItem('user', JSON.stringify(result.user));
+        router.push('/play');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const toggleMode = () => {
+    setIsLogin(!isLogin);
+    setError('');
+    reset();
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+      className="w-full max-w-lg mx-auto"
+    >
+      <Card className="glow-border">
+        <div className="text-center mb-8">
+          <motion.h2
+            className="text-4xl md:text-5xl font-bold mb-2"
+            style={{
+              textShadow: '0 0 30px #00ffff, 0 0 60px #00ffff',
+              color: '#00ffff'
+            }}
+          >
+            {isLogin ? 'Welcome Back' : 'Join the Race'}
+          </motion.h2>
+          <p className="text-gray-400">
+            {isLogin ? 'Login to continue your racing journey' : 'Create your account to start racing'}
+          </p>
+        </div>
+
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 p-4 rounded-lg bg-red-500/20 border border-red-500/50 text-red-400 text-sm"
+          >
+            {error}
+          </motion.div>
+        )}
+
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+          {!isLogin && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+            >
+              <Input
+                label="Full Name"
+                type="text"
+                placeholder="Enter your full name"
+                {...register('name')}
+                error={errors.name?.message}
+              />
+            </motion.div>
+          )}
+
+          <Input
+            label="Email Address"
+            type="email"
+            placeholder="your@email.com"
+            {...register('email')}
+            error={errors.email?.message}
+          />
+
+          {!isLogin && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+            >
+              <Input
+                label="Date of Birth"
+                type="date"
+                {...register('dob')}
+                error={errors.dob?.message}
+              />
+            </motion.div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-cyan-400 mb-2">
+              Verification Question
+            </label>
+            <select
+              {...register('verificationQuestion')}
+              className={`
+                w-full px-4 py-3 rounded-lg
+                glass border border-cyan-500/30
+                bg-black/20 text-white
+                focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/50
+                transition-all duration-300
+                ${errors.verificationQuestion ? 'border-red-500' : ''}
+              `}
+            >
+              <option value="">Select a question</option>
+              {verificationQuestions.map((q, idx) => (
+                <option key={idx} value={q}>
+                  {q}
+                </option>
+              ))}
+            </select>
+            {errors.verificationQuestion && (
+              <p className="mt-1 text-sm text-red-400">{errors.verificationQuestion.message}</p>
+            )}
+          </div>
+
+          <Input
+            label="Verification Answer"
+            type="text"
+            placeholder="Your answer"
+            {...register('verificationAnswer')}
+            error={errors.verificationAnswer?.message}
+          />
+
+          <Input
+            label="Password"
+            type="password"
+            placeholder="••••••••"
+            {...register('password')}
+            error={errors.password?.message}
+          />
+
+          {!isLogin && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+            >
+              <Input
+                label="Confirm Password"
+                type="password"
+                placeholder="••••••••"
+                {...register('confirmPassword')}
+                error={errors.confirmPassword?.message}
+              />
+            </motion.div>
+          )}
+
+          <Button type="submit" isLoading={isLoading} className="w-full text-lg py-4">
+            {isLogin ? 'Login' : 'Create Account'}
+          </Button>
+        </form>
+
+        <div className="mt-6 text-center">
+          <button
+            type="button"
+            onClick={toggleMode}
+            className="text-sm text-gray-400 hover:text-cyan-400 transition-colors"
+          >
+            {isLogin ? (
+              <>
+                Don't have an account? <span className="text-cyan-400 font-semibold">Register</span>
+              </>
+            ) : (
+              <>
+                Already have an account? <span className="text-cyan-400 font-semibold">Login</span>
+              </>
+            )}
+          </button>
+        </div>
+      </Card>
+    </motion.div>
+  );
+}
+
