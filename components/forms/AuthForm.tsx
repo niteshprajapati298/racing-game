@@ -1,9 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Input from '@/components/ui/Input';
@@ -19,41 +16,15 @@ const verificationQuestions = [
   'What is the name of your best friend?',
 ];
 
-const registerSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters').max(50, 'Name must be less than 50 characters'),
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
-  confirmPassword: z.string(),
-  dob: z.string().refine(
-    (val) => {
-      if (!val) return false;
-      const date = new Date(val);
-      if (isNaN(date.getTime())) return false;
-      const today = new Date();
-      const age = today.getFullYear() - date.getFullYear();
-      const monthDiff = today.getMonth() - date.getMonth();
-      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < date.getDate())) {
-        return age - 1 >= 18;
-      }
-      return age >= 18;
-    },
-    { message: 'You must be at least 18 years old' }
-  ),
-  verificationQuestion: z.string().min(1, 'Please select a verification question'),
-  verificationAnswer: z.string().min(2, 'Verification answer must be at least 2 characters'),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
-  path: ['confirmPassword'],
-});
-
-const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(1, 'Password is required'),
-  verificationAnswer: z.string().min(1, 'Verification answer is required'),
-});
-
-type RegisterFormData = z.infer<typeof registerSchema>;
-type LoginFormData = z.infer<typeof loginSchema>;
+interface FormErrors {
+  name?: string;
+  email?: string;
+  password?: string;
+  confirmPassword?: string;
+  dob?: string;
+  verificationQuestion?: string;
+  verificationAnswer?: string;
+}
 
 export default function AuthForm() {
   const [error, setError] = useState<string>('');
@@ -63,6 +34,27 @@ export default function AuthForm() {
   const [emailEntered, setEmailEntered] = useState(false);
   const [colorHue, setColorHue] = useState(0);
   const router = useRouter();
+
+  // Form state
+  const [registerForm, setRegisterForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+    dob: '',
+    verificationQuestion: '',
+    verificationAnswer: '',
+  });
+
+  const [loginForm, setLoginForm] = useState({
+    email: '',
+    password: '',
+    verificationAnswer: '',
+  });
+
+  // Form errors
+  const [registerErrors, setRegisterErrors] = useState<FormErrors>({});
+  const [loginErrors, setLoginErrors] = useState<FormErrors>({});
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -88,29 +80,132 @@ export default function AuthForm() {
     return `rgb(${Math.round((r + m) * 255)}, ${Math.round((g + m) * 255)}, ${Math.round((b + m) * 255)})`;
   };
 
-  // Separate form instances for login and register
-  const registerForm = useForm<RegisterFormData>({
-    resolver: zodResolver(registerSchema),
-    mode: 'onChange',
-  });
+  // Validation functions
+  const validateRegisterForm = (): boolean => {
+    const errors: FormErrors = {};
 
-  const loginForm = useForm<LoginFormData>({
-    resolver: zodResolver(loginSchema),
-    mode: 'onChange',
-  });
+    // Name validation
+    if (!registerForm.name.trim()) {
+      errors.name = 'Name is required';
+    } else if (registerForm.name.trim().length < 2) {
+      errors.name = 'Name must be at least 2 characters';
+    } else if (registerForm.name.trim().length > 50) {
+      errors.name = 'Name must be less than 50 characters';
+    }
 
-  const emailValue = isLogin 
-    ? (loginForm.watch('email') as string | undefined)
-    : (registerForm.watch('email') as string | undefined);
+    // Email validation
+    if (!registerForm.email.trim()) {
+      errors.email = 'Email is required';
+    } else {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(registerForm.email.trim())) {
+        errors.email = 'Invalid email address';
+      }
+    }
 
+    // Password validation
+    if (!registerForm.password) {
+      errors.password = 'Password is required';
+    } else if (registerForm.password.length < 6) {
+      errors.password = 'Password must be at least 6 characters';
+    }
+
+    // Confirm Password validation
+    if (!registerForm.confirmPassword) {
+      errors.confirmPassword = 'Please confirm your password';
+    } else if (registerForm.password !== registerForm.confirmPassword) {
+      errors.confirmPassword = "Passwords don't match";
+    }
+
+    // Date of Birth validation
+    if (!registerForm.dob) {
+      errors.dob = 'Date of birth is required';
+    } else {
+      const date = new Date(registerForm.dob);
+      if (isNaN(date.getTime())) {
+        errors.dob = 'Invalid date';
+      } else {
+        const today = new Date();
+        today.setHours(23, 59, 59, 999);
+        if (date > today) {
+          errors.dob = 'Date cannot be in the future';
+        } else {
+          const age = today.getFullYear() - date.getFullYear();
+          const monthDiff = today.getMonth() - date.getMonth();
+          const adjustedAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < date.getDate()) ? age - 1 : age;
+          if (adjustedAge < 18) {
+            errors.dob = 'You must be at least 18 years old';
+          }
+        }
+      }
+    }
+
+    // Verification Question validation
+    if (!registerForm.verificationQuestion) {
+      errors.verificationQuestion = 'Please select a verification question';
+    }
+
+    // Verification Answer validation
+    if (!registerForm.verificationAnswer.trim()) {
+      errors.verificationAnswer = 'Verification answer is required';
+    } else if (registerForm.verificationAnswer.trim().length < 2) {
+      errors.verificationAnswer = 'Verification answer must be at least 2 characters';
+    }
+
+    setRegisterErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const validateLoginForm = (): boolean => {
+    const errors: FormErrors = {};
+
+    if (!loginForm.email.trim()) {
+      errors.email = 'Email is required';
+    } else {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(loginForm.email.trim())) {
+        errors.email = 'Invalid email address';
+      }
+    }
+
+    if (!loginForm.password) {
+      errors.password = 'Password is required';
+    }
+
+    if (!loginForm.verificationAnswer.trim()) {
+      errors.verificationAnswer = 'Verification answer is required';
+    }
+
+    setLoginErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  // Handle input changes
+  const handleRegisterChange = (field: keyof typeof registerForm, value: string) => {
+    setRegisterForm(prev => ({ ...prev, [field]: value }));
+    // Clear error for this field when user starts typing
+    if (registerErrors[field]) {
+      setRegisterErrors(prev => ({ ...prev, [field]: undefined }));
+    }
+  };
+
+  const handleLoginChange = (field: keyof typeof loginForm, value: string) => {
+    setLoginForm(prev => ({ ...prev, [field]: value }));
+    // Clear error for this field when user starts typing
+    if (loginErrors[field]) {
+      setLoginErrors(prev => ({ ...prev, [field]: undefined }));
+    }
+  };
+
+  // Fetch verification question for login
   useEffect(() => {
-    if (isLogin && emailValue && emailValue.includes('@')) {
+    if (isLogin && loginForm.email && loginForm.email.includes('@')) {
       const fetchQuestion = async () => {
         try {
           const response = await fetch('/api/auth/get-question', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: emailValue }),
+            body: JSON.stringify({ email: loginForm.email }),
           });
           if (response.ok) {
             const data = await response.json();
@@ -133,104 +228,103 @@ export default function AuthForm() {
       setUserQuestion('');
       setEmailEntered(false);
     }
-  }, [emailValue, isLogin]);
+  }, [loginForm.email, isLogin]);
 
-  const onSubmit = async (data: RegisterFormData | LoginFormData) => {
-    setIsLoading(true);
+  // Form submission
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setError('');
 
+    if (!validateRegisterForm()) {
+      return;
+    }
+
+    setIsLoading(true);
+
     try {
-      if (isLogin) {
-        const loginData = data as LoginFormData;
-        console.log('Submitting login:', { email: loginData.email, hasPassword: !!loginData.password, hasAnswer: !!loginData.verificationAnswer });
-        
-        if (!loginData.email || !loginData.password || !loginData.verificationAnswer) {
-          throw new Error('Please fill in all fields');
-        }
-        
-        const response = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: loginData.email,
-            password: loginData.password,
-            verificationAnswer: loginData.verificationAnswer,
-          }),
-        });
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: registerForm.name.trim(),
+          email: registerForm.email.trim().toLowerCase(),
+          password: registerForm.password,
+          dob: registerForm.dob,
+          verificationQuestion: registerForm.verificationQuestion,
+          verificationAnswer: registerForm.verificationAnswer.trim(),
+        }),
+      });
 
-        let result;
-        try {
-          result = await response.json();
-        } catch (parseError) {
-          console.error('Failed to parse response:', parseError);
-          throw new Error('Server returned invalid response. Please check your connection.');
-        }
+      let result;
+      try {
+        result = await response.json();
+      } catch (parseError) {
+        console.error('Failed to parse response:', parseError);
+        throw new Error('Server returned invalid response. Please check your connection.');
+      }
 
-        console.log('Login response:', { ok: response.ok, status: response.status, hasToken: !!result.token, error: result.error });
+      if (!response.ok) {
+        throw new Error(result.error || `Registration failed (${response.status})`);
+      }
 
-        if (!response.ok) {
-          throw new Error(result.error || `Login failed (${response.status})`);
-        }
-
-        if (result.token && result.user) {
-          localStorage.setItem('token', result.token);
-          localStorage.setItem('user', JSON.stringify(result.user));
-          router.push('/play');
-        } else {
-          throw new Error('Invalid response from server - missing token or user data');
-        }
+      if (result.token && result.user) {
+        localStorage.setItem('token', result.token);
+        localStorage.setItem('user', JSON.stringify(result.user));
+        router.push('/play');
       } else {
-        const registerData = data as RegisterFormData;
-        console.log('Submitting registration:', { 
-          email: registerData.email, 
-          hasName: !!registerData.name,
-          hasDob: !!registerData.dob,
-          hasQuestion: !!registerData.verificationQuestion,
-          hasAnswer: !!registerData.verificationAnswer,
-          hasPassword: !!registerData.password
-        });
-        
-        if (!registerData.name || !registerData.email || !registerData.password || !registerData.dob || !registerData.verificationQuestion || !registerData.verificationAnswer) {
-          throw new Error('Please fill in all required fields');
-        }
-        
-        const response = await fetch('/api/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: registerData.name,
-            email: registerData.email,
-            password: registerData.password,
-            dob: registerData.dob,
-            verificationQuestion: registerData.verificationQuestion,
-            verificationAnswer: registerData.verificationAnswer,
-          }),
-        });
-
-        let result;
-        try {
-          result = await response.json();
-        } catch (parseError) {
-          console.error('Failed to parse response:', parseError);
-          throw new Error('Server returned invalid response. Please check your connection.');
-        }
-
-        console.log('Registration response:', { ok: response.ok, status: response.status, hasToken: !!result.token, error: result.error });
-
-        if (!response.ok) {
-          throw new Error(result.error || `Registration failed (${response.status})`);
-        }
-
-        if (result.token && result.user) {
-          localStorage.setItem('token', result.token);
-          localStorage.setItem('user', JSON.stringify(result.user));
-          router.push('/play');
-        } else {
-          throw new Error('Invalid response from server - missing token or user data');
-        }
+        throw new Error('Invalid response from server - missing token or user data');
       }
     } catch (err) {
-      console.error('Auth error:', err);
+      console.error('Registration error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred. Please try again.';
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (!validateLoginForm()) {
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: loginForm.email.trim().toLowerCase(),
+          password: loginForm.password,
+          verificationAnswer: loginForm.verificationAnswer.trim(),
+        }),
+      });
+
+      let result;
+      try {
+        result = await response.json();
+      } catch (parseError) {
+        console.error('Failed to parse response:', parseError);
+        throw new Error('Server returned invalid response. Please check your connection.');
+      }
+
+      if (!response.ok) {
+        throw new Error(result.error || `Login failed (${response.status})`);
+      }
+
+      if (result.token && result.user) {
+        localStorage.setItem('token', result.token);
+        localStorage.setItem('user', JSON.stringify(result.user));
+        router.push('/play');
+      } else {
+        throw new Error('Invalid response from server - missing token or user data');
+      }
+    } catch (err) {
+      console.error('Login error:', err);
       const errorMessage = err instanceof Error ? err.message : 'An error occurred. Please try again.';
       setError(errorMessage);
     } finally {
@@ -241,8 +335,22 @@ export default function AuthForm() {
   const toggleMode = () => {
     setIsLogin(!isLogin);
     setError('');
-    registerForm.reset();
-    loginForm.reset();
+    setRegisterForm({
+      name: '',
+      email: '',
+      password: '',
+      confirmPassword: '',
+      dob: '',
+      verificationQuestion: '',
+      verificationAnswer: '',
+    });
+    setLoginForm({
+      email: '',
+      password: '',
+      verificationAnswer: '',
+    });
+    setRegisterErrors({});
+    setLoginErrors({});
     setUserQuestion('');
     setEmailEntered(false);
   };
@@ -293,7 +401,7 @@ export default function AuthForm() {
           </motion.div>
         )}
 
-        <form onSubmit={isLogin ? loginForm.handleSubmit(onSubmit) : registerForm.handleSubmit(onSubmit)} className="space-y-5">
+        <form onSubmit={isLogin ? handleLoginSubmit : handleRegisterSubmit} className="space-y-5">
           <AnimatePresence mode="wait">
             {!isLogin && (
               <motion.div
@@ -307,8 +415,9 @@ export default function AuthForm() {
                   label="Full Name"
                   type="text"
                   placeholder="Enter your full name"
-                  {...registerForm.register('name')}
-                  error={registerForm.formState.errors.name?.message}
+                  value={registerForm.name}
+                  onChange={(e) => handleRegisterChange('name', e.target.value)}
+                  error={registerErrors.name}
                 />
               </motion.div>
             )}
@@ -318,8 +427,9 @@ export default function AuthForm() {
             label="Email Address"
             type="email"
             placeholder="your@email.com"
-            {...(isLogin ? loginForm.register('email') : registerForm.register('email'))}
-            error={isLogin ? loginForm.formState.errors.email?.message : registerForm.formState.errors.email?.message}
+            value={isLogin ? loginForm.email : registerForm.email}
+            onChange={(e) => isLogin ? handleLoginChange('email', e.target.value) : handleRegisterChange('email', e.target.value)}
+            error={isLogin ? loginErrors.email : registerErrors.email}
           />
 
           <AnimatePresence mode="wait">
@@ -334,8 +444,9 @@ export default function AuthForm() {
                 <Input
                   label="Date of Birth"
                   type="date"
-                  {...registerForm.register('dob')}
-                  error={registerForm.formState.errors.dob?.message}
+                  value={registerForm.dob}
+                  onChange={(e) => handleRegisterChange('dob', e.target.value)}
+                  error={registerErrors.dob}
                 />
               </motion.div>
             )}
@@ -371,14 +482,15 @@ export default function AuthForm() {
                 Verification Question
               </label>
               <select
-                {...registerForm.register('verificationQuestion')}
+                value={registerForm.verificationQuestion}
+                onChange={(e) => handleRegisterChange('verificationQuestion', e.target.value)}
                 className={`
                   w-full px-4 py-3 rounded-lg
                   glass border border-cyan-500/30
                   bg-black/30 text-white
                   focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/50
                   transition-all duration-300
-                  ${registerForm.formState.errors.verificationQuestion ? 'border-red-500' : ''}
+                  ${registerErrors.verificationQuestion ? 'border-red-500' : ''}
                 `}
               >
                 <option value="">Select a question</option>
@@ -388,10 +500,10 @@ export default function AuthForm() {
                   </option>
                 ))}
               </select>
-              {registerForm.formState.errors.verificationQuestion && (
+              {registerErrors.verificationQuestion && (
                 <p className="mt-1 text-sm text-red-400 flex items-center gap-1">
                   <span>⚠️</span>
-                  <span>{registerForm.formState.errors.verificationQuestion.message}</span>
+                  <span>{registerErrors.verificationQuestion}</span>
                 </p>
               )}
             </div>
@@ -401,16 +513,18 @@ export default function AuthForm() {
             label="Verification Answer"
             type="text"
             placeholder="Your answer"
-            {...(isLogin ? loginForm.register('verificationAnswer') : registerForm.register('verificationAnswer'))}
-            error={isLogin ? loginForm.formState.errors.verificationAnswer?.message : registerForm.formState.errors.verificationAnswer?.message}
+            value={isLogin ? loginForm.verificationAnswer : registerForm.verificationAnswer}
+            onChange={(e) => isLogin ? handleLoginChange('verificationAnswer', e.target.value) : handleRegisterChange('verificationAnswer', e.target.value)}
+            error={isLogin ? loginErrors.verificationAnswer : registerErrors.verificationAnswer}
           />
 
           <Input
             label="Password"
             type="password"
             placeholder="••••••••"
-            {...(isLogin ? loginForm.register('password') : registerForm.register('password'))}
-            error={isLogin ? loginForm.formState.errors.password?.message : registerForm.formState.errors.password?.message}
+            value={isLogin ? loginForm.password : registerForm.password}
+            onChange={(e) => isLogin ? handleLoginChange('password', e.target.value) : handleRegisterChange('password', e.target.value)}
+            error={isLogin ? loginErrors.password : registerErrors.password}
           />
 
           <AnimatePresence mode="wait">
@@ -426,8 +540,9 @@ export default function AuthForm() {
                   label="Confirm Password"
                   type="password"
                   placeholder="••••••••"
-                  {...registerForm.register('confirmPassword')}
-                  error={registerForm.formState.errors.confirmPassword?.message}
+                  value={registerForm.confirmPassword}
+                  onChange={(e) => handleRegisterChange('confirmPassword', e.target.value)}
+                  error={registerErrors.confirmPassword}
                 />
               </motion.div>
             )}

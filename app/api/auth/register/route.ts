@@ -8,15 +8,19 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const registerSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters').max(50, 'Name must be less than 50 characters'),
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
-  dob: z.string().refine(
+  name: z.string().min(1, 'Name is required').trim().min(2, 'Name must be at least 2 characters').max(50, 'Name must be less than 50 characters'),
+  email: z.string().min(1, 'Email is required').trim().email('Invalid email address'),
+  password: z.string().min(1, 'Password is required').min(6, 'Password must be at least 6 characters'),
+  dob: z.string().min(1, 'Date of birth is required').trim().refine(
     (val) => {
-      if (!val) return false;
+      if (!val || val.trim() === '') return false;
       const date = new Date(val);
       if (isNaN(date.getTime())) return false;
+      // Check if date is not in the future
       const today = new Date();
+      today.setHours(23, 59, 59, 999); // End of today
+      if (date > today) return false;
+      // Check age (must be 18+)
       const age = today.getFullYear() - date.getFullYear();
       const monthDiff = today.getMonth() - date.getMonth();
       if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < date.getDate())) {
@@ -24,11 +28,17 @@ const registerSchema = z.object({
       }
       return age >= 18;
     },
-    { message: 'You must be at least 18 years old' }
+    { message: 'You must be at least 18 years old and provide a valid date' }
   ),
-  verificationQuestion: z.string().min(1, 'Please select a verification question'),
-  verificationAnswer: z.string().min(2, 'Verification answer must be at least 2 characters'),
-});
+  verificationQuestion: z.string().min(1, 'Please select a verification question').trim(),
+  verificationAnswer: z.string().min(1, 'Verification answer is required').trim().min(2, 'Verification answer must be at least 2 characters'),
+}).transform((data) => ({
+  ...data,
+  email: data.email.toLowerCase().trim(),
+  name: data.name.trim(),
+  verificationQuestion: data.verificationQuestion.trim(),
+  verificationAnswer: data.verificationAnswer.trim(),
+}));
 
 export async function POST(request: NextRequest) {
   try {
@@ -61,8 +71,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ email: validatedData.email.toLowerCase().trim() });
+    // Check if user already exists (email is already lowercased in schema)
+    const existingUser = await User.findOne({ email: validatedData.email });
     if (existingUser) {
       return NextResponse.json(
         { error: 'User already exists with this email' },
@@ -70,14 +80,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Hash password and verification answer
+    // Hash password and verification answer (data is already trimmed and lowercased by schema transform)
     const hashedPassword = await hashPassword(validatedData.password);
-    const hashedVerificationAnswer = await hashPassword(validatedData.verificationAnswer.toLowerCase().trim());
+    const hashedVerificationAnswer = await hashPassword(validatedData.verificationAnswer.toLowerCase());
 
     // Create user
     const user = await User.create({
-      name: validatedData.name.trim(),
-      email: validatedData.email.toLowerCase().trim(),
+      name: validatedData.name,
+      email: validatedData.email,
       password: hashedPassword,
       dob: new Date(validatedData.dob),
       verificationQuestion: validatedData.verificationQuestion,
@@ -111,10 +121,14 @@ export async function POST(request: NextRequest) {
     console.error('Registration error:', error);
     
     if (error instanceof z.ZodError) {
-      const errorMessage = error.errors[0]?.message || 'Validation failed';
+      // Return all validation errors for better debugging
+      const errorMessages = error.errors.map(err => {
+        const path = err.path.join('.');
+        return `${path}: ${err.message}`;
+      }).join(', ');
       console.error('Validation errors:', error.errors);
       return NextResponse.json(
-        { error: errorMessage },
+        { error: errorMessages || 'Validation failed', details: error.errors },
         { status: 400 }
       );
     }
